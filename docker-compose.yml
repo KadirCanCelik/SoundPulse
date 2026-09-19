@@ -1,0 +1,185 @@
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: soundpulse-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    mem_limit: 1g
+    cpus: 1.0
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: soundpulse-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./exports:/app/exports
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 4g
+    cpus: 2.0
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  worker_gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: soundpulse-worker-gpu
+    command: >
+      celery -A src.worker.worker worker
+      -Q gpu_queue
+      --pool=solo
+      --loglevel=info
+      --max-tasks-per-child=20
+      -E
+    volumes:
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ./models:/app/pretrained_models
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/1
+      - HF_HOME=/app/pretrained_models
+      - HUGGINGFACE_HUB_CACHE=/app/pretrained_models
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    mem_limit: 8g
+    memswap_limit: 8g
+    restart: unless-stopped
+
+
+  worker_cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: soundpulse-worker-cpu
+    command: >
+      celery -A src.worker.worker worker
+      -Q cpu_queue
+      --concurrency=4
+      --loglevel=info
+      --max-tasks-per-child=50
+      -E
+    volumes:
+      - ./data:/app/data
+      - ./exports:/app/exports
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 4g
+    cpus: 4.0
+    restart: unless-stopped
+
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: soundpulse-flower
+
+    command: >
+      celery -A src.worker.worker flower
+      --port=5555
+      --broker=redis://:${REDIS_PASSWORD}@redis:6379/0
+      --basic_auth=${FLOWER_BASIC_AUTH}
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env
+
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: soundpulse-ui
+    command: ["streamlit", "run", "frontend/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./exports:/app/exports
+      - ./data:/app/data
+    depends_on:
+      - api
+    environment:
+      - BACKEND_URL=http://api:8000
+    mem_limit: 1g
+    cpus: 1.0
+    restart: unless-stopped
+
+volumes:
+  redis_data:
