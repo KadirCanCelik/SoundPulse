@@ -75,11 +75,11 @@ graph TD
 * **Blazing Fast Builds with `uv`:** The entire environment and Docker layer caching is managed by uv, ensuring deterministic, lightning-fast dependency resolution compared to legacy package managers.
 * **Interactive RAG Agent:** Transcriptions aren't just dumped into a text file; they are mapped with exact timestamps and speakers, allowing the user to chat with their meeting data via the UI.
 
----
 ## 📖 Articles
 
-[Don't Block Your GPU: Architecting a Distributed AI Audio Backend with FastAPI, Celery, and Redis](https://dev.to/kadircancelik/dont-block-your-gpu-architecting-a-distributed-ai-audio-backend-with-fastapi-celery-and-redis-2k2o)
----
+**[Don't Block Your GPU: Architecting a Distributed AI Audio Backend with FastAPI, Celery, and Redis](https://dev.to/kadircancelik/dont-block-your-gpu-architecting-a-distributed-ai-audio-backend-with-fastapi-celery-and-redis-2k2o)**  
+
+
 ## 🛠️ Tech Stack
 * **Backend / API:** FastAPI, Uvicorn, Pydantic (Data Validation)
 
