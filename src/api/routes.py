@@ -55,7 +55,7 @@ class QARequest(BaseModel):
 
 
 @router.post("/analyze")
-async def anaylze_audio(
+async def analyze_audio(
     file: UploadFile = File(...),
     num_speakers: int = Form(default=2, description="Expected number of speakers")
 ):
